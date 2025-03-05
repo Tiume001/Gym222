@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <canvas id="progressChart" width="400" height="200"></canvas>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Tracker - Il tuo allenamento</title>
@@ -424,55 +426,149 @@
 
     </div>
 
-    <button onclick="resetAllData()" style="margin: 20px auto; display: block; padding: 10px 20px; background-color: #ff4444; color: white; border: none; border-radius: 5px; cursor: pointer;">Reset All Data</button>
+    <!-- Bottone per aggiornare il grafico -->
+<button onclick="drawChart()" style="margin: 20px auto; display: block; padding: 10px 20px; background-color: #4285f4; color: white; border: none; border-radius: 5px; cursor: pointer;">
+  Aggiorna Grafico
+</button>
 
-    <script>
-    // Funzione per generare un ID univoco basato sulla posizione dell'input
-    function generateInputId(input) {
-        const exerciseContainer = input.closest('.esercizio');
-        const exerciseName = exerciseContainer.querySelector('h3').textContent.replace(/\s+/g, '');
-        const dayContainer = input.closest('.giorno-container');
-        const dayNumber = Array.from(dayContainer.parentNode.children).indexOf(dayContainer) + 1;
-        const bodyPart = input.closest('.parte-corpo').querySelector('.parte-title').textContent.split(' - ')[0].trim().replace(/\s+/g, '');
-        const inputType = input.classList.contains('reps') ? 'reps' : 'weight';
-        
-        return `giorno${dayNumber}-${bodyPart}-${exerciseName}-${inputType}`;
-    }
+<script>
+// Funzione per generare un ID univoco basato sulla posizione dell'input
+function generateInputId(input) {
+    const exerciseContainer = input.closest('.esercizio');
+    const exerciseName = exerciseContainer.querySelector('h3').textContent.replace(/\s+/g, '');
+    const dayContainer = input.closest('.giorno-container');
+    const dayNumber = Array.from(dayContainer.parentNode.children).indexOf(dayContainer) + 1;
+    const bodyPart = input.closest('.parte-corpo').querySelector('.parte-title').textContent.split(' - ')[0].trim().replace(/\s+/g, '');
+    const inputType = input.classList.contains('reps') ? 'reps' : 'weight';
+    
+    return `giorno${dayNumber}-${bodyPart}-${exerciseName}-${inputType}`;
+}
 
-    // Carica i dati salvati al caricamento della pagina
-    window.addEventListener('load', () => {
-        const allInputs = document.querySelectorAll('input');
-        
-        allInputs.forEach(input => {
-            const inputId = generateInputId(input);
-            const savedValue = localStorage.getItem(inputId);
-            if(savedValue) {
-                input.value = savedValue;
-            }
-        });
+// Carica i dati salvati al caricamento della pagina
+window.addEventListener('load', () => {
+    const allInputs = document.querySelectorAll('input');
+    
+    allInputs.forEach(input => {
+        const inputId = generateInputId(input);
+        const savedValue = localStorage.getItem(inputId);
+        if(savedValue) {
+            input.value = savedValue;
+        }
     });
+});
 
-    // Salva i dati quando vengono modificati
+// Salva i dati quando vengono modificati e li scrive in localStorage
+const allInputs = document.querySelectorAll('input');
+allInputs.forEach(input => {
+    input.addEventListener('input', () => {
+        const inputId = generateInputId(input);
+        localStorage.setItem(inputId, input.value);
+        // Se vuoi aggiornare il grafico in tempo reale, puoi chiamare drawChart() qui
+        // drawChart();
+    });
+});
+
+// Funzione per resettare tutti i dati (opzionale)
+function resetAllData() {
     const allInputs = document.querySelectorAll('input');
     allInputs.forEach(input => {
-        input.addEventListener('input', () => {
-            const inputId = generateInputId(input);
-            localStorage.setItem(inputId, input.value);
-        });
+        input.value = '';
+        const inputId = generateInputId(input);
+        localStorage.removeItem(inputId);
     });
-
-    // Funzione per resettare tutti i dati (opzionale, puoi aggiungere un pulsante)
-    function resetAllData() {
-        const allInputs = document.querySelectorAll('input');
-        allInputs.forEach(input => {
-            input.value = '';
-            const inputId = generateInputId(input);
-            localStorage.removeItem(inputId);
-        });
+    // Se hai un grafico disegnato, lo resettiamo
+    if(window.myChart) {
+        window.myChart.destroy();
     }
+}
 
-    // Aggiungi questo pulsante da qualche parte nel tuo HTML
-    // <button onclick="resetAllData()" style="margin: 20px auto; display: block; padding: 10px 20px;">Reset All Data</button>
+// -----------------------------
+// Funzioni per il grafico dei progressi
+// -----------------------------
+
+// Funzione per raccogliere i dati per ogni giorno e calcolare, per esempio, la media dei massimali
+function updateDailyProgress() {
+    let progressData = [];
+    const dayContainers = document.querySelectorAll('.giorno-container');
+    
+    dayContainers.forEach((container, index) => {
+         // Consideriamo index+1 come numero del giorno
+         const weightInputs = container.querySelectorAll('input.weight');
+         let weights = [];
+         weightInputs.forEach(input => {
+             if(input.value) {
+                 const w = parseFloat(input.value);
+                 if(!isNaN(w)) {
+                     weights.push(w);
+                 }
+             }
+         });
+         if(weights.length > 0) {
+             let sum = weights.reduce((a, b) => a + b, 0);
+             let avg = sum / weights.length;
+             progressData.push({ day: index + 1, averageWeight: avg });
+         }
+    });
+    return progressData;
+}
+
+// Funzione per disegnare il grafico usando Chart.js
+function drawChart() {
+    const progressData = updateDailyProgress();
+    // Se non ci sono dati, possiamo mostrare un alert o uscire
+    if(progressData.length === 0) {
+        alert("Non ci sono dati per generare il grafico.");
+        return;
+    }
+    
+    const ctx = document.getElementById('progressChart').getContext('2d');
+    const days = progressData.map(item => 'Giorno ' + item.day);
+    const avgWeights = progressData.map(item => item.averageWeight);
+    
+    // Se il grafico esiste già, distruggilo per aggiornarlo
+    if(window.myChart) {
+       window.myChart.destroy();
+    }
+    
+    window.myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Peso medio (massimale)',
+                data: avgWeights,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                fill: true,
+                tension: 0.2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Progressi in Palestra'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Peso (kg)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Giorni'
+                    }
+                }
+            }
+        }
+    });
+}
 </script>
 
 
